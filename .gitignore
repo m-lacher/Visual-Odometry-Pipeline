@@ -1,3 +1,4 @@
-/Datasets/kitti/*
-/Datasets/malaga-urban/*
-/Datasets/parking/*
+/Datasets/*
+.vscode/
+# Python bytecode files and folders
+__pycache__/
