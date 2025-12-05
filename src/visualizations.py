@@ -163,3 +163,68 @@ def visualize_world_points_2d(points_3d, R, t, scale=5):
     ax.legend()
     ax.axis('equal')
     plt.show()
+
+
+class WorldViewer2D:
+    def __init__(self, scale=1.0):
+        self.scale = scale
+        self.fig, self.ax = plt.subplots()
+
+        # store points and cameras
+        self.all_points = []
+        self.camera_positions = []
+        self.camera_rotations = []
+
+        # configure plot
+        self.ax.set_xlabel("X")
+        self.ax.set_ylabel("Z")
+        self.ax.set_title("Top-down 2D view of points and cameras")
+        self.ax.axis("equal")
+        plt.ion()   # interactive mode on
+        plt.show()
+
+    def add_points(self, points_3d):
+        """Add 3D points (Nx3 array)."""
+        points_3d = np.asarray(points_3d)
+        self.all_points.append(points_3d)
+
+    def add_camera(self, R, t):
+        """Add a camera pose given world→camera R,t from PnP."""
+        R = np.asarray(R)
+        # Convert to camera position in world frame
+        cam_pos =  t.flatten()   # shape (3,)
+        self.camera_positions.append(cam_pos)
+        self.camera_rotations.append(R)
+
+    def draw(self):
+        """Draw everything."""
+        self.ax.cla()  # clear axes but keep figure window
+
+        # labels & axes
+        self.ax.set_xlabel("X")
+        self.ax.set_ylabel("Z")
+        self.ax.set_title("Top-down 2D view of points and cameras")
+        self.ax.axis("equal")
+
+        # draw all points
+        if len(self.all_points) > 0:
+            P = np.vstack(self.all_points)
+            self.ax.scatter(P[:,0], P[:,2], s=5, color='m', label='3D Points')
+
+        # draw all cameras
+        for i, cam_pos in enumerate(self.camera_positions):
+            x, _, z = cam_pos
+            self.ax.scatter(x, z, s=40, color='b')
+            self.ax.text(x, z, f"{i}", fontsize=8)
+            # Optionally show orientation in 2D
+            # Get camera rotation in world frame
+            R_cw = self.camera_rotations[i]
+            # Camera X axis in world coordinates
+            cam_x_axis = R_cw[:,0] * self.scale
+            # Camera Z axis in world coordinates (forward)
+            cam_z_axis = R_cw[:,2] * self.scale
+
+            self.ax.arrow(x, z, cam_x_axis[0], cam_x_axis[2], color='r', head_width=0.05*self.scale)
+            self.ax.arrow(x, z, cam_z_axis[0], cam_z_axis[2], color='g', head_width=0.05*self.scale)
+
+        plt.pause(0.001)  # update without blocking

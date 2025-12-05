@@ -9,7 +9,7 @@ class MapPoint():
         self.observations = {}          # {frame_id : kp_idx} currently unsused, but maybe needed in bundle adjustment.
 
 
-def calculate_essential_matrix_and_triangulate_map_points(p0, p1, p0_descriptors, K, pos_camera_1):
+def calculate_essential_matrix_and_triangulate_map_points(p0, p1, descriptors, K, pos_camera_1):
     # Note from Markus: maybe we have to use the Fundamental Matrix and are not allowed to use the intrinsic Matrix K.
     # We need to clarify this.
     E, inliers = cv2.findEssentialMat(
@@ -42,7 +42,7 @@ def calculate_essential_matrix_and_triangulate_map_points(p0, p1, p0_descriptors
     #visualize_world_points_3d(points_3d, R, t) # does not work properly for now..
 
     # Create MapPoints (landmarks)
-    p0_inlier_descriptors = p0_descriptors[:, inlier_mask]
-    map_points = [MapPoint(points_3d[i], p0_inlier_descriptors[i]) for i in range(len(points_3d))]
+    inlier_descriptors = descriptors[:, inlier_mask]
+    map_points = [MapPoint(points_3d[i], inlier_descriptors[:,i]) for i in range(len(points_3d))]
 
     return map_points

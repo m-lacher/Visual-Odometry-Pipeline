@@ -11,7 +11,6 @@ def matchDescriptorsLOWE(img1_descriptors, img0_descriptors, match_lambda):
     # disntances is a QxD matrix where Q is the number of query descriptors and D is the number of database descriptors. 
     # In our case its 200 by 200 because both images have 200 keypoints
     # We will probably have to think about the number of keypoints later for performance reasons 200 seems like a lot
-
     distances = cdist(img1_descriptors.T, img0_descriptors.T, 'euclidean')
     #print(distances.shape)
     #print(distances[0][:])
@@ -54,7 +53,7 @@ def matchDescriptorsLOWE(img1_descriptors, img0_descriptors, match_lambda):
                 
                 if current_distance < minimum_distance:
                     # overwrite because a closer match found
-                    print("closer match found overwriting")
+                    #print("closer match found overwriting")
                     minimum_distance = current_distance
                     winning_query_index = img1_idx
             
