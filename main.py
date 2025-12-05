@@ -4,6 +4,8 @@ import numpy as np
 from glob import glob
 from src.initialization import process_frame, match_points
 from src.visualizations import *
+from src.helpers.map_points import MapPoint, calculate_essential_matrix_and_triangulate_map_points
+from src.helpers.match_descriptors import matchDescriptorsLOWE
 
 # code was adjusted from given main.py
 
@@ -97,44 +99,12 @@ def initialize(ds, path_handle, frame_indices):
     #visualize_keypoints(key_points_1, img1, "Frame 1: All Keypoints")
 
     # Step 4 - maching the points from the frames
-    p0, p1 = match_points(key_points_0, described_points_0, key_points_1, described_points_1, match_lambda=0.7)
-    number_of_matches = len(p0)
+    p0, p1, p0_descriptors, p1_descriptors = match_points(key_points_0, described_points_0, key_points_1, described_points_1, match_lambda=0.7)
+    visualize_matches(p0, p1, img0, img1, max_matches=15)
+    map_points = calculate_essential_matrix_and_triangulate_map_points(p0, p1, p0_descriptors, K, None)
+    return map_points
 
-    E, inliers = cv2.findEssentialMat(
-        p0,
-        p1,
-        cameraMatrix=K,
-        method=cv2.RANSAC,
-        prob=0.999,
-        threshold=1.0
-    )
-
-    number_of_inlier_points, R, t, mask = cv2.recoverPose(E, p0, p1, K)
-    print(f"Number of matches: {number_of_matches}")
-    print(f"Inliners found: {number_of_inlier_points}")
-    print(f"Inlier ratio: {number_of_inlier_points / number_of_matches * 100 :.1f}%")
-
-    # Remove the outlier points
-    inliers = mask.ravel().astype(bool)
-    p0 = p0[inliers]
-    p1 = p1[inliers]
-
-    # Point triangulation:
-    P1 = np.hstack((K, np.zeros((3, 1))))
-    P2 = np.hstack((K @ R, K @ t))
-
-    points1_h = p0.T
-    points2_h = p1.T
-    points_4d = cv2.triangulatePoints(P1, P2, points1_h, points2_h) # Points in homogenous coordinates
-    points_3d = (points_4d[:3] / points_4d[3]).T  # transform to real 3D coordinates
-
-    visualize_world_points_2d(points_3d, R, t)
-    visualize_world_points_3d(points_3d, R, t)
-
-    return p0, p1, img0, img1
-
-
-def continuous_operation(ds, path_handle, last_frame, start_index):
+def continuous_operation(ds, path_handle, last_frame, start_index, map_points):
 
     prev_img = None
     
@@ -163,7 +133,12 @@ def continuous_operation(ds, path_handle, last_frame, start_index):
         
         # Simulate 'pause(0.01)'
         cv2.waitKey(10)
-        
+        key_points, described_points = process_frame(img=image)
+        map_descriptors = np.array([mp.descriptor for mp in map_points])
+        matches = matchDescriptorsLOWE(described_points, map_descriptors, match_lambda=0.7)
+        query_indices = np.nonzero(matches >= 0)[0]
+        match_indices = matches[query_indices].astype(int)
+
         prev_img = image
 
 
@@ -171,7 +146,7 @@ if __name__ == "__main__":
 
     # 0 Initial config
     ds = 2  # 0: KITTI, 1: Malaga, 2: Parking, 3: Own Dataset
-    bootstrap_frames = [0, 4]
+    bootstrap_frames = [0, 4]   # which two images to use for finding initial landmarks
     
     # 1 Load Dataset
     K, ground_truth, last_frame, path_handle = load_dataset(ds)
@@ -179,12 +154,10 @@ if __name__ == "__main__":
     print(f"K matrix: \n{K}")
     
     # 2 Initialization
-    p0, p1, img0, img1 = initialize(ds, path_handle, bootstrap_frames)
+    map_points = initialize(ds, path_handle, bootstrap_frames)
     
     #visualize_matches_zoomed(p0, p1, img0, img1, zoom_radius=30, scale_factor=6, max_matches=10)
-    visualize_matches(p0, p1, img0, img1, max_matches=15)
-    
 
     # 3. Continuous Operation
     #start_index = bootstrap_frames[1] + 1
-    #continuous_operation(ds, path_handle, last_frame, start_index)
+    #continuous_operation(ds, path_handle, last_frame, start_index, map_points)
