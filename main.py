@@ -3,7 +3,9 @@ import cv2
 import numpy as np
 from glob import glob
 from src.initialization import process_frame, match_points
-from src.visualizations import visualize_matches, visualize_keypoints, visualize_matches_zoomed
+from src.visualizations import *
+from src.helpers.map_points import MapPoint, calculate_essential_matrix_and_triangulate_map_points
+from src.helpers.match_descriptors import matchDescriptorsLOWE
 
 # code was adjusted from given main.py
 
@@ -97,13 +99,16 @@ def initialize(ds, path_handle, frame_indices):
     #visualize_keypoints(key_points_1, img1, "Frame 1: All Keypoints")
 
     # Step 4 - maching the points from the frames
-    p0, p1 = match_points(key_points_0, described_points_0, key_points_1, described_points_1, match_lambda=0.7)
-    
-    return p0, p1, img0, img1
+    p0, p1, p0_descriptors, p1_descriptors = match_points(key_points_0, described_points_0, key_points_1, described_points_1, match_lambda=0.7)
+    visualize_matches(p0, p1, img0, img1, max_matches=15)
+    map_points = calculate_essential_matrix_and_triangulate_map_points(p0, p1, p1_descriptors, K, None) # store descriptors from later frame (more robust)
+    return map_points
 
+def continuous_operation(ds, path_handle, last_frame, start_index, map_points):
 
-def continuous_operation(ds, path_handle, last_frame, start_index):
-
+    viewer = WorldViewer2D(scale=3) # for visualization
+    map_points_3d = np.array([mp.position for mp in map_points]).T
+    viewer.add_points(map_points_3d.T)    # New landmark points from this frame
     prev_img = None
     
     for i in range(start_index, last_frame + 1):
@@ -128,18 +133,55 @@ def continuous_operation(ds, path_handle, last_frame, start_index):
         if image is None:
             print(f"Warning: could not read {image_path}")
             continue
+
+        # describe new image features
+        key_points, described_points = process_frame(img=image)
+        # find new matches from existing landmarks
+        map_descriptors = np.array([mp.descriptor for mp in map_points]).T
+        print(map_points_3d.shape)
+        matches = matchDescriptorsLOWE(described_points, map_descriptors, match_lambda=0.7)
+
+        query_indices = np.nonzero(matches >= 0)[0]
+        match_indices = matches[query_indices].astype(int)
+
+        points_matched_2d = key_points[:, query_indices]       # 2D points in current image
+        points_matched_3d = map_points_3d[:, match_indices]   # corresponding 3D map points
+
+        points_matched_2d = points_matched_2d[::-1, :].T   # shape (N,2)
+        points_matched_3d = points_matched_3d.T           # shape (N,3)
         
-        # Simulate 'pause(0.01)'
-        cv2.waitKey(10)
+        # do PnP with Ransac
+        success, rvec, tvec, inliers = cv2.solvePnPRansac(
+            np.array(points_matched_3d),
+            np.array(points_matched_2d),
+            K,
+            None
+        )
+        print(f"PnP Success: {success}")
+        # If pnp was successful: Plot new camera pose
+        if(success):
+            print(f"Number of inliers found: {len(inliers)}")
+            R, _ = cv2.Rodrigues(rvec)
+            t = tvec.reshape(3, 1)
+
+            R_cw = R.T          # camera rotation in world coordinates
+            t_cw = -R_cw @ t    # camera position in world coordinates
+
+            print(t_cw)
+            viewer.add_camera(R_cw, t_cw)         # add new camera pose
+            viewer.draw()                         # Refresh display
+        
         
         prev_img = image
+        # Simulate 'pause(0.01)'
+        cv2.waitKey(10)
 
 
 if __name__ == "__main__":
 
     # 0 Initial config
     ds = 2  # 0: KITTI, 1: Malaga, 2: Parking, 3: Own Dataset
-    bootstrap_frames = [0, 4]
+    bootstrap_frames = [0, 4]   # which two images to use for finding initial landmarks
     
     # 1 Load Dataset
     K, ground_truth, last_frame, path_handle = load_dataset(ds)
@@ -147,12 +189,10 @@ if __name__ == "__main__":
     print(f"K matrix: \n{K}")
     
     # 2 Initialization
-    p0, p1, img0, img1 = initialize(ds, path_handle, bootstrap_frames)
+    map_points = initialize(ds, path_handle, bootstrap_frames)
     
     #visualize_matches_zoomed(p0, p1, img0, img1, zoom_radius=30, scale_factor=6, max_matches=10)
-    visualize_matches(p0, p1, img0, img1, max_matches=15)
-    
 
     # 3. Continuous Operation
-    #start_index = bootstrap_frames[1] + 1
-    #continuous_operation(ds, path_handle, last_frame, start_index)
+    start_index = bootstrap_frames[1] + 1
+    continuous_operation(ds, path_handle, last_frame, start_index, map_points)

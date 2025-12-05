@@ -7,7 +7,7 @@ import numpy as np
 def process_frame(img, 
         corner_patch_size=9, 
         harris_kappa=0.08, 
-        num_keypoints=200, 
+        num_keypoints=400, # Note from Markus: I increased it to have more matches in initialization.
         nonmaximum_supression_radius=8, 
         descriptor_radius=9
     ):
@@ -32,7 +32,10 @@ def match_points(key_points_0, described_points_0, key_points_1, described_point
     p0_coords = key_points_0[:, match_indices] 
     p1_coords = key_points_1[:, query_indices]
 
+    p0_descriptor_matched = described_points_0[:, match_indices]
+    p1_descriptor_matched = described_points_1[:, query_indices]
+
     p0 = p0_coords[::-1, :].T 
     p1 = p1_coords[::-1, :].T
     
-    return p0, p1
+    return p0, p1, p0_descriptor_matched, p1_descriptor_matched
