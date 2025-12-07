@@ -1,6 +1,7 @@
 import os
 import cv2
 import numpy as np
+import matplotlib.pyplot as plt
 from glob import glob
 from src.initialization import process_frame, match_points
 from src.visualizations import *
@@ -106,6 +107,9 @@ def initialize(ds, path_handle, frame_indices):
 
 def continuous_operation(ds, path_handle, last_frame, start_index, map_points):
 
+    keyframe_dist = 4 #defines every nth Frame is a keyframe
+    last_keyframe = None #initializes last keyframe
+
     viewer = WorldViewer2D(scale=3) # for visualization
     map_points_3d = np.array([mp.position for mp in map_points]).T
     viewer.add_points(map_points_3d.T)    # New landmark points from this frame
@@ -130,25 +134,47 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points):
         
         image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
         
+        is_keyframe = (i - start_index) % keyframe_dist == 0 #checks if the current image is a keyframe
+        
         if image is None:
             print(f"Warning: could not read {image_path}")
             continue
+
+        #display the mapped points
+        map_points_3d = np.array([mp.position for mp in map_points]).T
+        viewer.add_points(map_points_3d.T)    # New landmark points from this frame
 
         # describe new image features
         key_points, described_points = process_frame(img=image)
         # find new matches from existing landmarks
         map_descriptors = np.array([mp.descriptor for mp in map_points]).T
-        print(map_points_3d.shape)
-        matches = matchDescriptorsLOWE(described_points, map_descriptors, match_lambda=0.7)
+        if i == start_index: #first frame after initialization
+            matches = matchDescriptorsLOWE(described_points, map_descriptors, match_lambda=0.7) #matches using the map descriptors
+            query_indices = np.nonzero(matches >= 0)[0]
+            match_indices = matches[query_indices].astype(int)
+            points_matched_3d = map_points_3d[:, match_indices] #selects the matched 3d points from the map
+        elif (i - start_index) % keyframe_dist == 1: #second frame after keyframe
+            matches = matchDescriptorsLOWE(described_points, map_descriptors, match_lambda=0.7) #matches using the updated map descriptors from last keyframe
+            query_indices = np.nonzero(matches >= 0)[0]
+            match_indices = matches[query_indices].astype(int)
+            points_matched_3d = map_points_3d[:, match_indices] #selects the matched 3d points from the map
+        else: #all other frames
+            matches = matchDescriptorsLOWE(described_points, prev_matched_dp, match_lambda=0.7) #matches using the previous frame descriptors (only valid points from the last frame matching)
+            query_indices = np.nonzero(matches >= 0)[0]
+            match_indices = matches[query_indices].astype(int)
+            points_matched_3d = prev_matched_kp3d[:, match_indices] #select the matched 3d points from the previous frame matching
 
-        query_indices = np.nonzero(matches >= 0)[0]
-        match_indices = matches[query_indices].astype(int)
+        
 
         points_matched_2d = key_points[:, query_indices]       # 2D points in current image
-        points_matched_3d = map_points_3d[:, match_indices]   # corresponding 3D map points
+        descriptors_matched_2d = described_points[:, query_indices] #corresponding descriptors
+        
+        prev_matched_kp = points_matched_2d #saves keypoints for the next frame
+        prev_matched_dp = descriptors_matched_2d #saves descriptors for the next frame
+        prev_matched_kp3d = points_matched_3d #saves 3d points for the next frame
 
-        points_matched_2d = points_matched_2d[::-1, :].T   # shape (N,2)
-        points_matched_3d = points_matched_3d.T           # shape (N,3)
+        points_matched_2d = points_matched_2d[::-1, :].T   # shape (N,2) for PnP
+        points_matched_3d = points_matched_3d.T           # shape (N,3) for PnP
         
         # do PnP with Ransac
         success, rvec, tvec, inliers = cv2.solvePnPRansac(
@@ -164,14 +190,64 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points):
             R, _ = cv2.Rodrigues(rvec)
             t = tvec.reshape(3, 1)
 
-            R_cw = R.T          # camera rotation in world coordinates
-            t_cw = -R_cw @ t    # camera position in world coordinates
+            R_wc = R.T          # camera rotation in world coordinates (Note Gian-Andrin: changed notation to match the usual convention)
+            t_wc = -R_wc @ t    # camera position in world coordinates (Note Gian-Andrin: changed notation to match the usual convention)
+            projection_matrix = np.hstack((K @ R, K @ t))
 
-            print(t_cw)
-            viewer.add_camera(R_cw, t_cw)         # add new camera pose
+            print(R_wc)
+            print(t_wc)
+            viewer.add_camera(R_wc, t_wc)         # add new camera pose
             viewer.draw()                         # Refresh display
         
+        """
+        Note Gian-Andrin: The following was my notation:
+        kp - keypoints
+        dp - described points
+        lkf - last keyframe
+        ckf - current keyframe
+        pm - projection matrix
+        """
+        if is_keyframe and (i - start_index) != 0 and success: #checks if current frame is a keyframe, PnP was successful, and is not the first keyframe
+            viewer.clear_points() #clears previous point cloud from viewer to avoid cluttering
+            p_lkf, p_ckf, p_lkf_descriptors, p_ckf_descriptors = match_points(lkf_kp, lkf_dp, key_points, described_points, match_lambda=0.7) #matches between last keyframe and current keyframe
+            F, mask = cv2.findEssentialMat(p_lkf,p_ckf, cameraMatrix=K, method=cv2.RANSAC, prob=0.999, threshold=1.0) #runs RANSAC to find inliers (fundamental matrix not used)
+            inlier_mask = mask.ravel().astype(bool)
+            p_lkf_inliers = p_lkf[inlier_mask] #selects only inliers
+            p_ckf_inliers = p_ckf[inlier_mask] #selects only inliers
+            inlier_descriptors = p_ckf_descriptors[:, inlier_mask] #selects only inliers
+
+            new_map_points = cv2.triangulatePoints(lkf_pm, projection_matrix, p_lkf_inliers.T, p_ckf_inliers.T) #triangulates new point cloud from inlier matches between keyframes
+            new_map_points_normalized = (new_map_points[:3] / new_map_points[3]).T #normalizes the points
+            new_map_points_normalized_CF = R @ new_map_points_normalized.T + t #transforms points to camera frame for filtering
+            
+            valid_point_mask_min = new_map_points_normalized_CF[2,:] > 0 #filters points that are behind the camera
+            valid_point_mask_max = new_map_points_normalized_CF[2,:] < 30 #filters points that are too far away
+            valid_point_mask = valid_point_mask_min & valid_point_mask_max #combines the masks
+
+            new_map_points_normalized = new_map_points_normalized[valid_point_mask] #applies mask and filters points
+            inlier_descriptors = inlier_descriptors[:, valid_point_mask] #applies mask to descriptors
+            new_map_points_list = [MapPoint(new_map_points_normalized[s], inlier_descriptors[:,s]) for s in range(len(new_map_points_normalized))] #creates new map points list
+
+            #map_points.extend(new_map_points_list) #adds new map points to existing map points (map points grows quickly and the calculations get slower)
+            map_points = new_map_points_list #replaces old map points with new ones
+            #visualize_matches(p_lkf_inliers, p_ckf_inliers, last_keyframe, image, max_matches=30) #visualizes the matches between keyframes (debugging step)
+            lkf_kp = key_points #saves current keypoints as last keyframe keypoints for next iteration
+            lkf_dp = described_points #saves current descriptors as last keyframe descriptors for next iteration
+            lkf_pm = projection_matrix #saves current projection matrix as last keyframe projection matrix for next iteration
+            last_keyframe = image #saves current image as last keyframe for next iteration
+            print("Is a keyframe")
+            #return map_points, new_map_points_list #(debugging step)
         
+        elif is_keyframe and (i - start_index) == 0 and success: #checks if current frame is the first keyframe and PnP was successful
+            lkf_kp = key_points #saves current keypoints as last keyframe keypoints for next iteration
+            lkf_dp = described_points #saves current descriptors as last keyframe descriptors for next iteration
+            lkf_pm = projection_matrix #saves current projection matrix as last keyframe projection matrix for next iteration
+            last_keyframe = image #saves current image as last keyframe for next iteration
+            print("First keyframe")
+
+        else: #runs if current frame is not a keyframe
+            print("Is not a keyframe")
+
         prev_img = image
         # Simulate 'pause(0.01)'
         cv2.waitKey(10)
@@ -195,4 +271,17 @@ if __name__ == "__main__":
 
     # 3. Continuous Operation
     start_index = bootstrap_frames[1] + 1
-    continuous_operation(ds, path_handle, last_frame, start_index, map_points)
+    map_points, new_map_points_list = continuous_operation(ds, path_handle, last_frame, start_index, map_points)
+
+""" #Visualization of old and new map points after last keyframe processing to compare (debugging purposes)
+    final_viewer = WorldViewer2D(scale=3)
+    map_points_3d_old = np.array([mp.position for mp in map_points]).T
+    final_viewer.add_points(map_points_3d_old.T, color = 'blue')
+    
+    map_points = new_map_points_list
+    map_points_3d_new = np.array([mp.position for mp in map_points]).T
+    final_viewer.add_points(map_points_3d_new.T, color = 'red')
+    final_viewer.draw()
+    plt.ioff()
+    plt.show()
+"""

@@ -66,7 +66,7 @@ def visualize_matches(p0, p1, img0, img1, max_matches=10):
 
     cv2.imshow(f"Top {num_show} Matches", canvas)
     cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    #cv2.destroyAllWindows()
 
 def visualize_keypoints(key_points, img, window_name, dot_radius=3):
     """
@@ -172,6 +172,7 @@ class WorldViewer2D:
 
         # store points and cameras
         self.all_points = []
+        self.point_colors = []
         self.camera_positions = []
         self.camera_rotations = []
 
@@ -183,10 +184,11 @@ class WorldViewer2D:
         plt.ion()   # interactive mode on
         plt.show()
 
-    def add_points(self, points_3d):
+    def add_points(self, points_3d, color = 'm'):
         """Add 3D points (Nx3 array)."""
         points_3d = np.asarray(points_3d)
         self.all_points.append(points_3d)
+        self.point_colors.append(color)
 
     def add_camera(self, R, t):
         """Add a camera pose given world→camera R,t from PnP."""
@@ -195,6 +197,13 @@ class WorldViewer2D:
         cam_pos =  t.flatten()   # shape (3,)
         self.camera_positions.append(cam_pos)
         self.camera_rotations.append(R)
+
+    def clear_points(self):
+        """Clear all stored 3D points and their colors."""
+        self.all_points = []
+        self.point_colors = []
+        #self.camera_positions = []
+        #self.camera_rotations = []
 
     def draw(self):
         """Draw everything."""
@@ -209,7 +218,10 @@ class WorldViewer2D:
         # draw all points
         if len(self.all_points) > 0:
             P = np.vstack(self.all_points)
-            self.ax.scatter(P[:,0], P[:,2], s=5, color='m', label='3D Points')
+            
+            for points_set, color in zip(self.all_points, self.point_colors):
+                self.ax.scatter(points_set[:,0], points_set[:,2], s=5, color=color, label='3D Points')
+            #self.ax.scatter(P[:,0], P[:,2], s=5, color='m', label='3D Points')
 
         # draw all cameras
         for i, cam_pos in enumerate(self.camera_positions):
