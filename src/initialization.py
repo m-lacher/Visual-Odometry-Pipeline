@@ -7,7 +7,7 @@ import numpy as np
 def process_frame(img, 
         corner_patch_size=9, 
         harris_kappa=0.08, 
-        num_keypoints=400, # Note from Markus: I increased it to have more matches in initialization.
+        num_keypoints=500, # Note from Markus: I increased it to have more matches in initialization.
         nonmaximum_supression_radius=8, 
         descriptor_radius=9
     ):
