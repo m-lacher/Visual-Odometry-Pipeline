@@ -4,8 +4,8 @@ from scipy.spatial.distance import cdist
 def matchDescriptorsLOWE(img1_descriptors, img0_descriptors, match_lambda):
     # img0 = target, img1 = candidate
     
-    print("Query descriptor:", img1_descriptors.shape)
-    print("Target descriptor:", img0_descriptors.shape)
+    #print("Query descriptor:", img1_descriptors.shape)
+    #print("Target descriptor:", img0_descriptors.shape)
 
     # computing distances between descriptors
     # disntances is a QxD matrix where Q is the number of query descriptors and D is the number of database descriptors. 

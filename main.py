@@ -7,6 +7,9 @@ from src.initialization import process_frame, match_points
 from src.visualizations import *
 from src.helpers.map_points import MapPoint, calculate_essential_matrix_and_triangulate_map_points
 from src.helpers.match_descriptors import matchDescriptorsLOWE
+from src.helpers.bundle_adjustment import bundle_adjustment
+from src.helpers.ba_bridge import build_optimization_problem, update_objects_from_state
+from src.helpers.runBA import runBA
 
 # code was adjusted from given main.py
 
@@ -101,14 +104,17 @@ def initialize(ds, path_handle, frame_indices):
 
     # Step 4 - maching the points from the frames
     p0, p1, p0_descriptors, p1_descriptors = match_points(key_points_0, described_points_0, key_points_1, described_points_1, match_lambda=0.7)
-    visualize_matches(p0, p1, img0, img1, max_matches=15)
-    map_points = calculate_essential_matrix_and_triangulate_map_points(p0, p1, p1_descriptors, K, None) # store descriptors from later frame (more robust)
+    visualize_matches(p0, p1, img0, img1, max_matches=30)
+    map_points = calculate_essential_matrix_and_triangulate_map_points(p0, p1, p1_descriptors, K, frame_indices, None) # store descriptors from later frame (more robust)
     return map_points
 
 def continuous_operation(ds, path_handle, last_frame, start_index, map_points):
 
     keyframe_dist = 4 #defines every nth Frame is a keyframe
     last_keyframe = None #initializes last keyframe
+    keyframe_history = []
+    MAX_HISTORY = 6 #bundle window
+    last_keyframe_idx = start_index
 
     viewer = WorldViewer2D(scale=3) # for visualization
     map_points_3d = np.array([mp.position for mp in map_points]).T
@@ -194,10 +200,16 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points):
             t_wc = -R_wc @ t    # camera position in world coordinates (Note Gian-Andrin: changed notation to match the usual convention)
             projection_matrix = np.hstack((K @ R, K @ t))
 
-            print(R_wc)
-            print(t_wc)
+            #print(R_wc)
+            #print(t_wc)
             viewer.add_camera(R_wc, t_wc)         # add new camera pose
             viewer.draw()                         # Refresh display
+
+            for idx in inliers.ravel():
+                map_idx = match_indices[idx] 
+                mp = map_points[map_idx]
+                uv = tuple(points_matched_2d[idx])
+                mp.add_observation(i, uv)
         
         """
         Note Gian-Andrin: The following was my notation:
@@ -210,33 +222,76 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points):
         if is_keyframe and (i - start_index) != 0 and success: #checks if current frame is a keyframe, PnP was successful, and is not the first keyframe
             viewer.clear_points() #clears previous point cloud from viewer to avoid cluttering
             p_lkf, p_ckf, p_lkf_descriptors, p_ckf_descriptors = match_points(lkf_kp, lkf_dp, key_points, described_points, match_lambda=0.7) #matches between last keyframe and current keyframe
-            F, mask = cv2.findEssentialMat(p_lkf,p_ckf, cameraMatrix=K, method=cv2.RANSAC, prob=0.999, threshold=1.0) #runs RANSAC to find inliers (fundamental matrix not used)
-            inlier_mask = mask.ravel().astype(bool)
-            p_lkf_inliers = p_lkf[inlier_mask] #selects only inliers
-            p_ckf_inliers = p_ckf[inlier_mask] #selects only inliers
-            inlier_descriptors = p_ckf_descriptors[:, inlier_mask] #selects only inliers
+            if len(p_lkf) <8:
+                print("Triangulation failed")
+            else:
+                F, mask = cv2.findEssentialMat(p_lkf,p_ckf, cameraMatrix=K, method=cv2.RANSAC, prob=0.999, threshold=1.0) #runs RANSAC to find inliers (fundamental matrix not used)
+                if mask is None:
+                    print("triangulation failed")
+                else:
+                    inlier_mask = mask.ravel().astype(bool)
+                    p_lkf_inliers = p_lkf[inlier_mask] #selects only inliers
+                    p_ckf_inliers = p_ckf[inlier_mask] #selects only inliers
+                    inlier_descriptors = p_ckf_descriptors[:, inlier_mask] #selects only inliers
 
-            new_map_points = cv2.triangulatePoints(lkf_pm, projection_matrix, p_lkf_inliers.T, p_ckf_inliers.T) #triangulates new point cloud from inlier matches between keyframes
-            new_map_points_normalized = (new_map_points[:3] / new_map_points[3]).T #normalizes the points
-            new_map_points_normalized_CF = R @ new_map_points_normalized.T + t #transforms points to camera frame for filtering
-            
-            valid_point_mask_min = new_map_points_normalized_CF[2,:] > 0 #filters points that are behind the camera
-            valid_point_mask_max = new_map_points_normalized_CF[2,:] < 30 #filters points that are too far away
-            valid_point_mask = valid_point_mask_min & valid_point_mask_max #combines the masks
+                    new_map_points = cv2.triangulatePoints(lkf_pm, projection_matrix, p_lkf_inliers.T, p_ckf_inliers.T) #triangulates new point cloud from inlier matches between keyframes
+                    new_map_points_normalized = (new_map_points[:3] / new_map_points[3]).T #normalizes the points
+                    new_map_points_normalized_CF = R @ new_map_points_normalized.T + t #transforms points to camera frame for filtering
+                    
+                    valid_point_mask_min = new_map_points_normalized_CF[2,:] > 0 #filters points that are behind the camera
+                    valid_point_mask_max = new_map_points_normalized_CF[2,:] < 30 #filters points that are too far away
+                    valid_point_mask = valid_point_mask_min & valid_point_mask_max #combines the masks
 
-            new_map_points_normalized = new_map_points_normalized[valid_point_mask] #applies mask and filters points
-            inlier_descriptors = inlier_descriptors[:, valid_point_mask] #applies mask to descriptors
-            new_map_points_list = [MapPoint(new_map_points_normalized[s], inlier_descriptors[:,s]) for s in range(len(new_map_points_normalized))] #creates new map points list
+                    new_map_points_normalized = new_map_points_normalized[valid_point_mask] #applies mask and filters points
+                    inlier_descriptors = inlier_descriptors[:, valid_point_mask] #applies mask to descriptors
+                    new_map_points_list = [MapPoint(new_map_points_normalized[s], inlier_descriptors[:,s]) for s in range(len(new_map_points_normalized))] #creates new map points list
 
-            #map_points.extend(new_map_points_list) #adds new map points to existing map points (map points grows quickly and the calculations get slower)
-            map_points = new_map_points_list #replaces old map points with new ones
-            #visualize_matches(p_lkf_inliers, p_ckf_inliers, last_keyframe, image, max_matches=30) #visualizes the matches between keyframes (debugging step)
-            lkf_kp = key_points #saves current keypoints as last keyframe keypoints for next iteration
-            lkf_dp = described_points #saves current descriptors as last keyframe descriptors for next iteration
-            lkf_pm = projection_matrix #saves current projection matrix as last keyframe projection matrix for next iteration
-            last_keyframe = image #saves current image as last keyframe for next iteration
-            print("Is a keyframe")
-            #return map_points, new_map_points_list #(debugging step)
+                    for idx, mp in enumerate(new_map_points_list):
+                        mp.add_observation(last_keyframe_idx, tuple(p_lkf_inliers[idx]))
+                        mp.add_observation(i, tuple(p_ckf_inliers[idx]))
+
+                    map_points.extend(new_map_points_list) #adds new map points to existing map points (map points grows quickly and the calculations get slower)
+                    #map_points = new_map_points_list #replaces old map points with new ones
+
+                    MAX_MAP_POINTS = 80
+                    if len(map_points) > MAX_MAP_POINTS:
+                        map_points = map_points[-MAX_MAP_POINTS:]
+
+                    keyframe_history.append({
+                        'id': i,
+                        'rvec': rvec, # From PnP
+                        'tvec': tvec  # From PnP
+                    })
+                    
+                    # Keep history size constant
+                    if len(keyframe_history) > MAX_HISTORY:
+                        keyframe_history.pop(0)
+
+                    # RUN BUNDLE ADJUSTMENT
+                    if len(keyframe_history) >= MAX_HISTORY:
+                        continue
+                        print(f"Running Bundle Adjustment on window of {len(keyframe_history)} frames...")
+                        hidden_state, observations, mapping = build_optimization_problem(map_points, keyframe_history)
+                        if hidden_state is not None:
+                            # 2. Run Optimization
+                            # Note: You might need to verify if runBA fixes the first frame! 
+                            # If not, the whole window might drift. 
+                            optimized_state = runBA(hidden_state, observations, K)
+                            
+                            # 3. Update Real Objects
+                            update_objects_from_state(optimized_state, map_points, keyframe_history, mapping)
+                            print("Local BA complete.")
+
+
+                #visualize_matches(p_lkf_inliers, p_ckf_inliers, last_keyframe, image, max_matches=30) #visualizes the matches between keyframes (debugging step)
+                lkf_kp = key_points #saves current keypoints as last keyframe keypoints for next iteration
+                lkf_dp = described_points #saves current descriptors as last keyframe descriptors for next iteration
+                lkf_pm = projection_matrix #saves current projection matrix as last keyframe projection matrix for next iteration
+
+                last_keyframe = image #saves current image as last keyframe for next iteration
+                last_keyframe_idx = i
+                print("Is a keyframe")
+                #return map_points, new_map_points_list #(debugging step)
         
         elif is_keyframe and (i - start_index) == 0 and success: #checks if current frame is the first keyframe and PnP was successful
             lkf_kp = key_points #saves current keypoints as last keyframe keypoints for next iteration
