@@ -7,9 +7,9 @@ from src.initialization import process_frame, match_points
 from src.visualizations import *
 from src.helpers.map_points import MapPoint, calculate_essential_matrix_and_triangulate_map_points
 from src.helpers.match_descriptors import matchDescriptorsLOWE
-from src.helpers.bundle_adjustment import bundle_adjustment
-from src.helpers.ba_bridge import build_optimization_problem, update_objects_from_state
-from src.helpers.runBA import runBA
+#from src.helpers.bundle_adjustment import bundle_adjustment
+#from src.helpers.ba_bridge import build_optimization_problem, update_objects_from_state
+#from src.helpers.runBA import runBA
 
 # code was adjusted from given main.py
 
@@ -268,20 +268,8 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points):
                         keyframe_history.pop(0)
 
                     # RUN BUNDLE ADJUSTMENT
-                    if len(keyframe_history) >= MAX_HISTORY:
-                        continue
-                        print(f"Running Bundle Adjustment on window of {len(keyframe_history)} frames...")
-                        hidden_state, observations, mapping = build_optimization_problem(map_points, keyframe_history)
-                        if hidden_state is not None:
-                            # 2. Run Optimization
-                            # Note: You might need to verify if runBA fixes the first frame! 
-                            # If not, the whole window might drift. 
-                            optimized_state = runBA(hidden_state, observations, K)
-                            
-                            # 3. Update Real Objects
-                            update_objects_from_state(optimized_state, map_points, keyframe_history, mapping)
-                            print("Local BA complete.")
-
+                    #if len(keyframe_history) >= MAX_HISTORY:
+                    #    continue
 
                 #visualize_matches(p_lkf_inliers, p_ckf_inliers, last_keyframe, image, max_matches=30) #visualizes the matches between keyframes (debugging step)
                 lkf_kp = key_points #saves current keypoints as last keyframe keypoints for next iteration
