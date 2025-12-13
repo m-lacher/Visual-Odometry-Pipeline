@@ -61,6 +61,7 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
         
         image_path = get_image_path(ds, path_handle, i)
         image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+        viewer.update_image(image)
         
         is_keyframe = (i - start_index) % keyframe_dist == 0
         

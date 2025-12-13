@@ -168,75 +168,99 @@ def visualize_world_points_2d(points_3d, R, t, scale=5):
 class WorldViewer2D:
     def __init__(self, scale=1.0):
         self.scale = scale
-        self.fig, self.ax = plt.subplots()
+
+        # 3 subplots: top-down (XZ), front (XY), image
+        self.fig, (self.ax_xz, self.ax_xy, self.ax_img) = plt.subplots(1, 3, figsize=(16, 5))
 
         # store points and cameras
         self.all_points = []
-        self.point_colors = []
         self.camera_positions = []
         self.camera_rotations = []
 
-        # configure plot
-        self.ax.set_xlabel("X")
-        self.ax.set_ylabel("Z")
-        self.ax.set_title("Top-down 2D view of points and cameras")
-        self.ax.axis("equal")
-        plt.ion()   # interactive mode on
+        # XZ view
+        self.ax_xz.set_xlabel("X")
+        self.ax_xz.set_ylabel("Z")
+        self.ax_xz.set_title("Top-down view (X-Z)")
+        self.ax_xz.axis("equal")
+
+        # XY view
+        self.ax_xy.set_xlabel("X")
+        self.ax_xy.set_ylabel("Y")
+        self.ax_xy.set_title("Front view (X-Y)")
+        self.ax_xy.axis("equal")
+
+        # image view
+        self.ax_img.axis("off")
+        self.ax_img.set_title("Current Frame")
+
+        plt.ion()
         plt.show()
 
-    def add_points(self, points_3d, color = 'm'):
-        """Add 3D points (Nx3 array)."""
+    def add_points(self, points_3d):
         points_3d = np.asarray(points_3d)
         self.all_points.append(points_3d)
-        self.point_colors.append(color)
 
     def add_camera(self, R, t):
-        """Add a camera pose given world→camera R,t from PnP."""
-        R = np.asarray(R)
-        # Convert to camera position in world frame
-        cam_pos =  t.flatten()   # shape (3,)
+        cam_pos = t.flatten()
         self.camera_positions.append(cam_pos)
-        self.camera_rotations.append(R)
+        self.camera_rotations.append(np.asarray(R))
+
+    def update_image(self, img):
+        self.ax_img.cla()
+        self.ax_img.imshow(img, cmap="gray")
+        self.ax_img.set_title("Current Frame")
+        self.ax_img.axis("off")
 
     def clear_points(self):
-        """Clear all stored 3D points and their colors."""
+        """Clear all stored 3D points."""
         self.all_points = []
-        self.point_colors = []
-        #self.camera_positions = []
-        #self.camera_rotations = []
 
     def draw(self):
-        """Draw everything."""
-        self.ax.cla()  # clear axes but keep figure window
+        """Draw XZ map + XY map + image."""
+        # --- CLEAR MAP AXES (but keep image) ---
+        self.ax_xz.cla()
+        self.ax_xy.cla()
 
-        # labels & axes
-        self.ax.set_xlabel("X")
-        self.ax.set_ylabel("Z")
-        self.ax.set_title("Top-down 2D view of points and cameras")
-        self.ax.axis("equal")
+        # XZ labels
+        self.ax_xz.set_xlabel("X")
+        self.ax_xz.set_ylabel("Z")
+        self.ax_xz.set_title("Top-down view (X-Z)")
+        self.ax_xz.axis("equal")
 
-        # draw all points
+        # XY labels
+        self.ax_xy.set_xlabel("X")
+        self.ax_xy.set_ylabel("Y")
+        self.ax_xy.set_title("Front view (X-Y)")
+        self.ax_xy.axis("equal")
+
+        # --- DRAW POINTS ---
         if len(self.all_points) > 0:
             P = np.vstack(self.all_points)
-            
-            for points_set, color in zip(self.all_points, self.point_colors):
-                self.ax.scatter(points_set[:,0], points_set[:,2], s=5, color=color, label='3D Points')
-            #self.ax.scatter(P[:,0], P[:,2], s=5, color='m', label='3D Points')
+            self.ax_xz.scatter(P[:, 0], P[:, 2], s=5, color='m')
+            self.ax_xy.scatter(P[:, 0], P[:, 1], s=5, color='m')
 
-        # draw all cameras
+        # --- DRAW CAMERAS ---
         for i, cam_pos in enumerate(self.camera_positions):
-            x, _, z = cam_pos
-            self.ax.scatter(x, z, s=40, color='b')
-            self.ax.text(x, z, f"{i}", fontsize=8)
-            # Optionally show orientation in 2D
-            # Get camera rotation in world frame
+            x, y, z = cam_pos
             R_cw = self.camera_rotations[i]
-            # Camera X axis in world coordinates
-            cam_x_axis = R_cw[:,0] * self.scale
-            # Camera Z axis in world coordinates (forward)
-            cam_z_axis = R_cw[:,2] * self.scale
 
-            self.ax.arrow(x, z, cam_x_axis[0], cam_x_axis[2], color='r', head_width=0.05*self.scale)
-            self.ax.arrow(x, z, cam_z_axis[0], cam_z_axis[2], color='g', head_width=0.05*self.scale)
+            # XZ view
+            self.ax_xz.scatter(x, z, s=40, color='b')
+            self.ax_xz.text(x, z, f"{i}", fontsize=8)
 
-        plt.pause(0.001)  # update without blocking
+            cam_x_axis = R_cw[:, 0] * self.scale
+            cam_z_axis = R_cw[:, 2] * self.scale
+
+            self.ax_xz.arrow(x, z, cam_x_axis[0], cam_x_axis[2], color='r', head_width=0.05*self.scale)
+            self.ax_xz.arrow(x, z, cam_z_axis[0], cam_z_axis[2], color='g', head_width=0.05*self.scale)
+
+            # XY view
+            self.ax_xy.scatter(x, y, s=40, color='b')
+            self.ax_xy.text(x, y, f"{i}", fontsize=8)
+
+            cam_y_axis = R_cw[:, 1] * self.scale
+
+            self.ax_xy.arrow(x, y, cam_x_axis[0], cam_x_axis[1], color='r', head_width=0.05*self.scale)
+            self.ax_xy.arrow(x, y, cam_y_axis[0], cam_y_axis[1], color='g', head_width=0.05*self.scale)
+
+        plt.pause(0.001)
