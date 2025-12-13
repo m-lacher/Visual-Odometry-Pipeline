@@ -69,7 +69,7 @@ def runBA(hidden_state, observations, K):
             landmark_indices = observations[observation_i + 2 + num_frame_observations*2:observation_i + 2 + num_frame_observations * 3]
             
             # Landmarks observed in this specific frame.
-            p_W_L = p_W_landmarks[:, landmark_indices.astype(np.int) - 1]
+            p_W_L = p_W_landmarks[:, landmark_indices.astype(np.int32) - 1]
             
             # Transforming the observed landmarks into the camera frame for projection.
             T_C_W = np.linalg.inv(single_T_W_C)
