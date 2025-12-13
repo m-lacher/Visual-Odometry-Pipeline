@@ -29,7 +29,7 @@ def load_dataset(ds):
     elif ds == 1:
         # Malaga
         img_dir = os.path.join(malaga_path, 'malaga-urban-dataset-extract-07_rectified_800x600_Images')
-        left_images = sorted(glob(os.path.join(img_dir, '*.jpg')))
+        left_images = sorted(glob(os.path.join(img_dir, '*left.jpg')))
         last_frame = len(left_images)
         K = np.array([
             [621.18428, 0, 404.0076],
