@@ -166,7 +166,7 @@ def visualize_world_points_2d(points_3d, R, t, scale=5):
 
 
 class WorldViewer2D:
-    def __init__(self, map_size=700, zoom=20.0, img_size=(480, 640), max_points_to_draw=200, draw_keypoints_enabled=True):
+    def __init__(self, map_size=700, zoom=20.0, img_size=(480, 640), max_points_to_draw=500, draw_keypoints_enabled=True):
         """
         map_size : pixel size of the map window (top-down map)
         zoom     : pixels per meter (increase to zoom in)
@@ -243,13 +243,6 @@ class WorldViewer2D:
                 u0, v0 = self._world_to_map(x0, z0, cx, cz)
                 u1, v1 = self._world_to_map(x1, z1, cx, cz)
                 cv2.line(map_img, (u0, v0), (u1, v1), (0, 255, 0), 2)
-
-        # Draw camera positions
-        for t in self.camera_positions:
-            x, _, z = t
-            u, v = self._world_to_map(x, z, cx, cz)
-            if 0 <= u < self.map_size and 0 <= v < self.map_size:
-                cv2.circle(map_img, (u, v), 4, (0, 0, 255), -1)
 
         # --- IMAGE PANEL ---
         if self.current_image is not None:

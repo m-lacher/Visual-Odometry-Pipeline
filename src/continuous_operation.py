@@ -36,8 +36,7 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
     Returns:
         map_points: Updated list of map points
     """
-    import os
-    
+
     keyframe_dist = 4  # defines every nth Frame is a keyframe
     keyframe_history = []
     MAX_HISTORY = 6  # bundle window
@@ -52,8 +51,6 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
     lkf_kp = None
     lkf_dp = None
     lkf_pm = None
-    prev_matched_dp = None
-    prev_matched_kp3d = None
     
     for i in range(start_index, last_frame + 1):
         print(f"\nProcessing frame {i}")
@@ -67,10 +64,6 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
         if image is None:
             print(f"Warning: could not read {image_path}")
             continue
-
-        
-        height, width = image.shape[:2]  # img.shape = (H, W) for grayscale, (H, W, C) for color
-        print(f"Image dimensions: width={width}, height={height}")
 
         # display the mapped points
         map_points_3d = np.array([mp.position for mp in map_points]).T
@@ -181,16 +174,10 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
                     lkf_dp = described_points
                     lkf_pm = projection_matrix
                     last_keyframe_idx = i
-                    print("Is a keyframe")
         
         elif is_keyframe and (i - start_index) == 0 and success:
             lkf_kp = key_points
             lkf_dp = described_points
             lkf_pm = projection_matrix
-            print("First keyframe")
-        else:
-            print("Is not a keyframe")
-
-        cv2.waitKey(10)
 
     return map_points
