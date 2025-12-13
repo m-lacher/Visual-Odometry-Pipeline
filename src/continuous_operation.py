@@ -111,7 +111,7 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
             t_wc = -R_wc @ t
             projection_matrix = np.hstack((K @ R, K @ t))
 
-            viewer.add_camera(R_wc, t_wc)
+            viewer.add_camera(t_wc) # only position
             viewer.draw()
 
             for idx in inliers.ravel():
