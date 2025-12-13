@@ -43,7 +43,7 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
     MAX_HISTORY = 6  # bundle window
     last_keyframe_idx = start_index
 
-    viewer = WorldViewer2D(scale=3)  # for visualization
+    viewer = WorldViewer2D()  # for visualization
     map_points_3d = np.array([mp.position for mp in map_points]).T
     viewer.add_points(map_points_3d.T)
     MAX_MAP_POINTS = 80
@@ -61,7 +61,6 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
         
         image_path = get_image_path(ds, path_handle, i)
         image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-        viewer.update_image(image)
         
         is_keyframe = (i - start_index) % keyframe_dist == 0
         
@@ -69,38 +68,27 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
             print(f"Warning: could not read {image_path}")
             continue
 
+        
+        height, width = image.shape[:2]  # img.shape = (H, W) for grayscale, (H, W, C) for color
+        print(f"Image dimensions: width={width}, height={height}")
+
         # display the mapped points
         map_points_3d = np.array([mp.position for mp in map_points]).T
         viewer.add_points(map_points_3d.T)
 
         # describe new image features
         key_points, described_points = process_frame(img=image)
+
+        viewer.update_image(image, key_points)
         
         # find new matches from existing landmarks
         map_descriptors = np.array([mp.descriptor for mp in map_points]).T
-        
-        if i == start_index:  # first frame after initialization
-            matches = matchDescriptorsLOWE(described_points, map_descriptors, match_lambda=0.7)
-            query_indices = np.nonzero(matches >= 0)[0]
-            match_indices = matches[query_indices].astype(int)
-            points_matched_3d = map_points_3d[:, match_indices]
-        elif (i - start_index) % keyframe_dist == 1:  # second frame after keyframe
-            matches = matchDescriptorsLOWE(described_points, map_descriptors, match_lambda=0.7)
-            query_indices = np.nonzero(matches >= 0)[0]
-            match_indices = matches[query_indices].astype(int)
-            points_matched_3d = map_points_3d[:, match_indices]
-        else:  # all other frames
-            matches = matchDescriptorsLOWE(described_points, prev_matched_dp, match_lambda=0.7)
-            query_indices = np.nonzero(matches >= 0)[0]
-            match_indices = matches[query_indices].astype(int)
-            points_matched_3d = prev_matched_kp3d[:, match_indices]
 
+        matches = matchDescriptorsLOWE(described_points, map_descriptors, match_lambda=0.7)
+        query_indices = np.nonzero(matches >= 0)[0]
+        match_indices = matches[query_indices].astype(int)
+        points_matched_3d = map_points_3d[:, match_indices]
         points_matched_2d = key_points[:, query_indices]
-        descriptors_matched_2d = described_points[:, query_indices]
-        
-        prev_matched_dp = descriptors_matched_2d
-        prev_matched_kp3d = points_matched_3d
-
         points_matched_2d = points_matched_2d[::-1, :].T  # shape (N,2) for PnP
         points_matched_3d = points_matched_3d.T  # shape (N,3) for PnP
         
