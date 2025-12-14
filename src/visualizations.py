@@ -225,9 +225,14 @@ class WorldViewer2D:
         # Map Panel
         map_img = canvas[:self.map_size, :self.map_size]
         map_img[:] = 25
+        if self.camera_positions:
+            cam_text = f"Top-down view (X-Z) | Camera pos (X,Z): ({self.camera_positions[-1][0]:.2f}, {self.camera_positions[-1][2]:.2f})"
+        else:
+            cam_text = "Top-down view (X-Z) | Camera pos: (0.00, 0.00)"
+
         cv2.putText(
             map_img,
-            f"Top-down view (X-Z)",
+            cam_text,
             (10, 25),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.55,
