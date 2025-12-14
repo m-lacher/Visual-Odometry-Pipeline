@@ -98,15 +98,15 @@ def run_local_bundle_adjustment(
     sparsity = ba_sparsity(n_cams, n_points, cam_indices, point_indices)
 
     res = least_squares(
-        ba_residuals,
+        ba_residuals_fast,   # <-- changed
         x0,
         jac_sparsity=sparsity,
         loss='huber',
         f_scale=5.0,
-        verbose=2,
         x_scale='jac',
         ftol=1e-4,
         method='trf',
+        verbose=0,           # <-- turn this off for speed
         args=(n_cams, n_points, cam_indices, point_indices, observations, K, rvec0, tvec0)
     )
 
@@ -124,21 +124,46 @@ def run_local_bundle_adjustment(
 
     return rvecs_opt, tvecs_opt, points_opt, res
 
-def build_ba_problem(map_points, keyframe_history):
-    """
-    Build BA inputs from map points and keyframes
-    """
+def ba_residuals_fast(params, n_cams, n_points, cam_indices, point_indices,
+                      observations, K, rvec0, tvec0):
 
+    rvecs = np.zeros((n_cams, 3))
+    tvecs = np.zeros((n_cams, 3))
+
+    rvecs[0] = rvec0
+    tvecs[0] = tvec0
+
+    rvecs[1:] = params[:3*(n_cams-1)].reshape((n_cams-1, 3))
+    tvecs[1:] = params[3*(n_cams-1):6*(n_cams-1)].reshape((n_cams-1, 3))
+
+    points = params[6*(n_cams-1):].reshape((n_points, 3))
+
+    # --- PRECOMPUTE ROTATIONS ---
+    Rs = [cv2.Rodrigues(r)[0] for r in rvecs]
+
+    residuals = np.empty(len(observations) * 2, dtype=np.float64)
+
+    for i in range(len(observations)):
+        cam = cam_indices[i]
+        pt = point_indices[i]
+
+        X = points[pt]
+        x = Rs[cam] @ X + tvecs[cam]
+        x = K @ x
+        proj = x[:2] / x[2]
+
+        residuals[2*i:2*i+2] = observations[i] - proj
+
+    return residuals
+
+
+def build_ba_problem(map_points, keyframe_history):
     cam_id_to_idx = {
         kf['id']: idx for idx, kf in enumerate(keyframe_history)
     }
 
-    rvecs = []
-    tvecs = []
-
-    for kf in keyframe_history:
-        rvecs.append(kf['rvec'].reshape(3))
-        tvecs.append(kf['tvec'].reshape(3))
+    rvecs = np.array([kf['rvec'].reshape(3) for kf in keyframe_history])
+    tvecs = np.array([kf['tvec'].reshape(3) for kf in keyframe_history])
 
     points_3d = []
     observations = []
@@ -146,25 +171,27 @@ def build_ba_problem(map_points, keyframe_history):
     point_indices = []
 
     for pt_idx, mp in enumerate(map_points):
+        if len(mp.observations) < 2:
+            continue  # IMPORTANT: BA needs ≥2 obs
+
+        points_3d.append(mp.position)
+
         for frame_id, uv in mp.observations.items():
             if frame_id not in cam_id_to_idx:
                 continue
 
-            cam_idx = cam_id_to_idx[frame_id]
-
-            points_3d.append(mp.position)
+            cam_indices.append(cam_id_to_idx[frame_id])
+            point_indices.append(len(points_3d) - 1)
             observations.append(uv)
-            cam_indices.append(cam_idx)
-            point_indices.append(pt_idx)
 
     if len(observations) < 20:
         return None
 
     return (
-        np.array(rvecs),
-        np.array(tvecs),
+        rvecs,
+        tvecs,
         np.array(points_3d),
         np.array(observations, dtype=np.float64),
         np.array(cam_indices),
-        np.array(point_indices)
+        np.array(point_indices),
     )
