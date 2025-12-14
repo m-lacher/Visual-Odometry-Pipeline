@@ -45,7 +45,7 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
     viewer = WorldViewer2D()  # for visualization
     map_points_3d = np.array([mp.position for mp in map_points]).T
     viewer.add_points(map_points_3d.T)
-    MAX_MAP_POINTS = 100
+    MAX_MAP_POINTS = 80
     
     # Initialize tracking variables
     lkf_kp = None
