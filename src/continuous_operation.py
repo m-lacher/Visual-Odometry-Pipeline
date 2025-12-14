@@ -45,7 +45,7 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
     viewer = WorldViewer2D()  # for visualization
     map_points_3d = np.array([mp.position for mp in map_points]).T
     viewer.add_points(map_points_3d.T)
-    MAX_MAP_POINTS = 80
+    MAX_MAP_POINTS = 100
     
     # Initialize tracking variables
     lkf_kp = None
@@ -65,17 +65,17 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
             print(f"Warning: could not read {image_path}")
             continue
 
-        # display the mapped points
         map_points_3d = np.array([mp.position for mp in map_points]).T
-        viewer.add_points(map_points_3d.T)
+        map_descriptors = np.array([mp.descriptor for mp in map_points]).T
 
         # describe new image features
         key_points, described_points = process_frame(img=image)
 
+        # display the mapped points
+        viewer.add_points(map_points_3d.T)
         viewer.update_image(image, key_points)
         
         # find new matches from existing landmarks
-        map_descriptors = np.array([mp.descriptor for mp in map_points]).T
 
         matches = matchDescriptorsLOWE(described_points, map_descriptors, match_lambda=0.7)
         query_indices = np.nonzero(matches >= 0)[0]
@@ -92,11 +92,11 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
             K,
             None
         )
-        print(f"PnP Success: {success}")
-        
+
         # If pnp was successful: Plot new camera pose
         if success:
             print(f"Number of inliers found: {len(inliers)}")
+
             R, _ = cv2.Rodrigues(rvec)
             t = tvec.reshape(3, 1)
 
@@ -112,6 +112,8 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
                 mp = map_points[map_idx]
                 uv = tuple(points_matched_2d[idx])
                 mp.add_observation(i, uv)
+        else:
+            print("PnP failed")
         
         # Keyframe processing
         if is_keyframe and (i - start_index) != 0 and success:
