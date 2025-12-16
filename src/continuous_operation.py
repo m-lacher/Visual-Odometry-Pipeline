@@ -22,7 +22,7 @@ def get_image_path(ds, path_handle, frame_index):
         raise ValueError("Invalid dataset index")
 
 
-def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K):
+def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K, do_bundle_adjustment=True):
     """
     Continuously process frames, match features, estimate pose, and triangulate new landmarks.
     
@@ -166,8 +166,8 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
 
                     keyframe_history.append({
                         'id': i,
-                        'rvec': rvec.copy(),
-                        'tvec': tvec.copy()
+                        'rvec': rvec.reshape(3).copy(),
+                        'tvec': tvec.reshape(3).copy()
                     })
 
                     if len(keyframe_history) > MAX_HISTORY:
@@ -176,35 +176,36 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
                     # -----------------------------
                     # Local Bundle Adjustment
                     # -----------------------------
-                    ba_data = build_ba_problem(map_points, keyframe_history)
+                    if do_bundle_adjustment:
+                        ba_data = build_ba_problem(map_points, keyframe_history)
 
-                    if ba_data is not None:
-                        rvecs, tvecs, points_3d, obs, cam_idx, pt_idx = ba_data
+                        if ba_data is not None:
+                            rvecs, tvecs, points_3d, obs, cam_idx, pt_idx = ba_data
 
-                        try:
-                            rvecs_opt, tvecs_opt, points_opt, _ = run_local_bundle_adjustment(
-                                rvecs,
-                                tvecs,
-                                points_3d,
-                                obs,
-                                cam_idx,
-                                pt_idx,
-                                K
-                            )
+                            try:
+                                rvecs_opt, tvecs_opt, points_opt, _ = run_local_bundle_adjustment(
+                                    rvecs,
+                                    tvecs,
+                                    points_3d,
+                                    obs,
+                                    cam_idx,
+                                    pt_idx,
+                                    K
+                                )
 
-                            # Update keyframes
-                            for kf, r_opt, t_opt in zip(keyframe_history, rvecs_opt, tvecs_opt):
-                                kf['rvec'][:] = r_opt
-                                kf['tvec'][:] = t_opt
+                                # Update keyframes
+                                for kf, r_opt, t_opt in zip(keyframe_history, rvecs_opt, tvecs_opt):
+                                    kf['rvec'][:] = r_opt
+                                    kf['tvec'][:] = t_opt
 
-                            # Update map points
-                            for mp, p_opt in zip(map_points, points_opt):
-                                mp.position[:] = p_opt
+                                # Update map points
+                                for mp, p_opt in zip(map_points, points_opt):
+                                    mp.position[:] = p_opt
 
-                            print("Local BA applied")
+                                print("Local BA applied")
 
-                        except Exception as e:
-                            print("BA failed:", e)
+                            except Exception as e:
+                                print("BA failed:", e)
 
                     lkf_kp = key_points
                     lkf_dp = described_points
