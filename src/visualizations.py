@@ -166,77 +166,162 @@ def visualize_world_points_2d(points_3d, R, t, scale=5):
 
 
 class WorldViewer2D:
-    def __init__(self, scale=1.0):
-        self.scale = scale
-        self.fig, self.ax = plt.subplots()
+    def __init__(
+        self,
+        map_size=700,
+        zoom=20.0,
+        map_radius=12.0,   # maximum map size
+        img_size=(480, 640),
+        max_points_to_draw=500,
+        draw_keypoints_enabled=True
+    ):
+        """
+        map_size : pixel size of the map window
+        zoom     : pixels per meter
+        map_radius : half-width of map (limits the area shown)
+        """
+        self.map_size = map_size
+        self.zoom = zoom
+        self.map_radius = map_radius
+        self.img_h, self.img_w = img_size
+        self.max_points_to_draw = max_points_to_draw
+        self.draw_keypoints_enabled = draw_keypoints_enabled
 
-        # store points and cameras
-        self.all_points = []
-        self.point_colors = []
-        self.camera_positions = []
-        self.camera_rotations = []
+        self.points = []               # list of (N,3)
+        self.camera_positions = []     # list of (3,)
+        self.current_image = None
+        self.key_points = None
 
-        # configure plot
-        self.ax.set_xlabel("X")
-        self.ax.set_ylabel("Z")
-        self.ax.set_title("Top-down 2D view of points and cameras")
-        self.ax.axis("equal")
-        plt.ion()   # interactive mode on
-        plt.show()
-
-    def add_points(self, points_3d, color = 'm'):
-        """Add 3D points (Nx3 array)."""
-        points_3d = np.asarray(points_3d)
-        self.all_points.append(points_3d)
-        self.point_colors.append(color)
-
-    def add_camera(self, R, t):
-        """Add a camera pose given world→camera R,t from PnP."""
-        R = np.asarray(R)
-        # Convert to camera position in world frame
-        cam_pos =  t.flatten()   # shape (3,)
-        self.camera_positions.append(cam_pos)
-        self.camera_rotations.append(R)
+    def add_points(self, points_3d):
+        self.points.append(np.asarray(points_3d))
 
     def clear_points(self):
-        """Clear all stored 3D points and their colors."""
-        self.all_points = []
-        self.point_colors = []
-        #self.camera_positions = []
-        #self.camera_rotations = []
+        self.points = []
 
-    def draw(self):
-        """Draw everything."""
-        self.ax.cla()  # clear axes but keep figure window
+    def add_camera(self, t):
+        self.camera_positions.append(t.flatten())
 
-        # labels & axes
-        self.ax.set_xlabel("X")
-        self.ax.set_ylabel("Z")
-        self.ax.set_title("Top-down 2D view of points and cameras")
-        self.ax.axis("equal")
+    def update_image(self, img, key_points=None):
+        self.current_image = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        self.key_points = key_points
 
-        # draw all points
-        if len(self.all_points) > 0:
-            P = np.vstack(self.all_points)
-            
-            for points_set, color in zip(self.all_points, self.point_colors):
-                self.ax.scatter(points_set[:,0], points_set[:,2], s=5, color=color, label='3D Points')
-            #self.ax.scatter(P[:,0], P[:,2], s=5, color='m', label='3D Points')
+    def _world_to_map(self, x, z, cx, cz):
+        u = int(self.map_size / 2 + (x - cx) * self.zoom)
+        v = int(self.map_size / 2 - (z - cz) * self.zoom)
+        return u, v
 
-        # draw all cameras
-        for i, cam_pos in enumerate(self.camera_positions):
-            x, _, z = cam_pos
-            self.ax.scatter(x, z, s=40, color='b')
-            self.ax.text(x, z, f"{i}", fontsize=8)
-            # Optionally show orientation in 2D
-            # Get camera rotation in world frame
-            R_cw = self.camera_rotations[i]
-            # Camera X axis in world coordinates
-            cam_x_axis = R_cw[:,0] * self.scale
-            # Camera Z axis in world coordinates (forward)
-            cam_z_axis = R_cw[:,2] * self.scale
+    def _inside_radius(self, x, z, cx, cz):
+        return (
+            abs(x - cx) <= self.map_radius and
+            abs(z - cz) <= self.map_radius
+        )
 
-            self.ax.arrow(x, z, cam_x_axis[0], cam_x_axis[2], color='r', head_width=0.05*self.scale)
-            self.ax.arrow(x, z, cam_z_axis[0], cam_z_axis[2], color='g', head_width=0.05*self.scale)
+    def draw(self, window_name="VO Top-down Viewer"):
+        canvas = np.zeros(
+            (max(self.map_size, self.img_h), self.map_size + self.img_w, 3),
+            dtype=np.uint8
+        )
 
-        plt.pause(0.001)  # update without blocking
+        # Map Panel
+        map_img = canvas[:self.map_size, :self.map_size]
+        map_img[:] = 25
+        if self.camera_positions:
+            cam_text = f"Top-down view (X-Z) | Camera pos (X,Z): ({self.camera_positions[-1][0]:.2f}, {self.camera_positions[-1][2]:.2f})"
+        else:
+            cam_text = "Top-down view (X-Z) | Camera pos: (0.00, 0.00)"
+
+        cv2.putText(
+            map_img,
+            cam_text,
+            (10, 25),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (200, 200, 200),
+            1
+        )
+
+        # Center on latest camera
+        if self.camera_positions:
+            cx, _, cz = self.camera_positions[-1]
+        else:
+            cx, cz = 0.0, 0.0
+
+        # Draw map points
+        if self.points:
+            P = np.vstack(self.points)
+            for x, _, z in P:
+                if not self._inside_radius(x, z, cx, cz):
+                    continue
+                u, v = self._world_to_map(x, z, cx, cz)
+                if 0 <= u < self.map_size and 0 <= v < self.map_size:
+                    cv2.circle(map_img, (u, v), 2, (255, 0, 255), -1)
+
+        # Draw camera trajectory
+        if len(self.camera_positions) > 1:
+            for i in range(1, len(self.camera_positions)):
+                x0, _, z0 = self.camera_positions[i - 1]
+                x1, _, z1 = self.camera_positions[i]
+
+                if not (
+                    self._inside_radius(x0, z0, cx, cz) or
+                    self._inside_radius(x1, z1, cx, cz)
+                ):
+                    continue
+
+                u0, v0 = self._world_to_map(x0, z0, cx, cz)
+                u1, v1 = self._world_to_map(x1, z1, cx, cz)
+
+                cv2.line(map_img, (u0, v0), (u1, v1), (0, 255, 0), 2)
+
+        # Draw camera center
+        uc, vc = self._world_to_map(cx, cz, cx, cz)
+        cv2.circle(map_img, (uc, vc), 5, (0, 0, 255), -1)
+
+        # Image Panel
+        if self.current_image is not None:
+            img_h_orig, img_w_orig = self.current_image.shape[:2]
+            img_panel = cv2.resize(self.current_image, (self.img_w, self.img_h))
+
+            if (
+                self.key_points is not None
+                and self.key_points.size > 0
+                and self.draw_keypoints_enabled
+            ):
+                dp = self.key_points
+
+                if dp.shape[0] != 2 and dp.shape[1] == 2:
+                    dp = dp.T
+                elif dp.shape[0] == 3:
+                    dp = dp[:2] / dp[2]
+
+                if dp.shape[1] > self.max_points_to_draw:
+                    idx = np.linspace(
+                        0, dp.shape[1] - 1,
+                        self.max_points_to_draw,
+                        dtype=int
+                    )
+                    dp = dp[:, idx]
+
+                cols = np.clip(
+                    (dp[1] * self.img_w / img_w_orig).astype(int),
+                    0, self.img_w - 1
+                )
+                rows = np.clip(
+                    (dp[0] * self.img_h / img_h_orig).astype(int),
+                    0, self.img_h - 1
+                )
+
+                for r, c in zip(rows, cols):
+                    cv2.drawMarker(
+                        img_panel,
+                        (c, r),
+                        (0, 255, 0),
+                        cv2.MARKER_CROSS,
+                        4,
+                        1
+                    )
+
+            canvas[:self.img_h, self.map_size:self.map_size + self.img_w] = img_panel
+
+        cv2.imshow(window_name, canvas)
+        cv2.waitKey(1)

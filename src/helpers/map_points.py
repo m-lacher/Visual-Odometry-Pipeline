@@ -7,9 +7,13 @@ class MapPoint():
         self.position = position_3d
         self.descriptor = descriptor    # In our case SIFT
         self.observations = {}          # {frame_id : kp_idx} currently unsused, but maybe needed in bundle adjustment.
+        # changed dictionary to frame_id : uv coordinates
+
+    def add_observation(self, frame_id, uv):
+        self.observations[frame_id]= uv
 
 
-def calculate_essential_matrix_and_triangulate_map_points(p0, p1, descriptors, K, pos_camera_1):
+def calculate_essential_matrix_and_triangulate_map_points(p0, p1, descriptors, K, frame_indices, pos_camera_1):
     # Note from Markus: maybe we have to use the Fundamental Matrix and are not allowed to use the intrinsic Matrix K.
     # We need to clarify this.
     E, inliers = cv2.findEssentialMat(
@@ -40,18 +44,31 @@ def calculate_essential_matrix_and_triangulate_map_points(p0, p1, descriptors, K
     points_3d = (points_4d[:3] / points_4d[3]).T  # transform to real 3D coordinates
     
     # Filter out points with negative depth or are too far away
-    valid_point_mask = points_3d[:,2] > 0 #positive depth
-    points_3d = points_3d[valid_point_mask]
-    inlier_descriptors = inlier_descriptors[:, valid_point_mask]
-    valid_point_mask = points_3d[:,2] < 30 #max depth
-    points_3d = points_3d[valid_point_mask]
-    inlier_descriptors = inlier_descriptors[:, valid_point_mask]
+    mask_pos = points_3d[:, 2] > 0
+    points_3d = points_3d[mask_pos]
+    inlier_descriptors = inlier_descriptors[:, mask_pos]
+    p0_inliers = p0_inliers[mask_pos]
+    p1_inliers = p1_inliers[mask_pos]
 
-    visualize_world_points_2d(points_3d, R, t)
+    mask_max = points_3d[:, 2] < 30
+    points_3d = points_3d[mask_max]
+    inlier_descriptors = inlier_descriptors[:, mask_max]
+    p0_inliers = p0_inliers[mask_max]
+    p1_inliers = p1_inliers[mask_max]
+
+    #visualize_world_points_2d(points_3d, R, t)
     #visualize_world_points_3d(points_3d, R, t) # does not work properly for now..
 
     # Create MapPoints (landmarks)
     
-    map_points = [MapPoint(points_3d[i], inlier_descriptors[:,i]) for i in range(len(points_3d))]
+    map_points = []
+    for i in range(len(points_3d)):
+        mp = MapPoint(points_3d[i], inlier_descriptors[:, i])
+        
+        if frame_indices is not None:
+            mp.add_observation(frame_indices[0], tuple(p0_inliers[i]))
+            mp.add_observation(frame_indices[1], tuple(p1_inliers[i]))
+            
+        map_points.append(mp)
 
     return map_points
