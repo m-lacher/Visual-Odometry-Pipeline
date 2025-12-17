@@ -16,7 +16,7 @@ def get_image_path(ds, path_handle, frame_index):
     elif ds == 2:
         return os.path.join(path_handle, 'images', f"img_{frame_index:05d}.png")
     elif ds == 3:
-        return os.path.join(path_handle, f"{frame_index:06d}.png")
+        return os.path.join(path_handle, f"frame_{frame_index:06d}.png")
     else:
         raise ValueError("Invalid dataset index")
 

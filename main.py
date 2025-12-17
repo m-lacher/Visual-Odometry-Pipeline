@@ -27,8 +27,9 @@ def initialize(ds, path_handle, frame_indices):
         img0 = cv2.imread(os.path.join(path_handle, 'images', f"img_{frame_indices[0]:05d}.png"), cv2.IMREAD_GRAYSCALE)
         img1 = cv2.imread(os.path.join(path_handle, 'images', f"img_{frame_indices[1]:05d}.png"), cv2.IMREAD_GRAYSCALE)
     elif ds == 3:
-        img0 = cv2.imread(os.path.join(path_handle, f"{frame_indices[0]:06d}.png"), cv2.IMREAD_GRAYSCALE)
-        img1 = cv2.imread(os.path.join(path_handle, f"{frame_indices[1]:06d}.png"), cv2.IMREAD_GRAYSCALE)
+        print(os.path.join(path_handle, f"frame_{frame_indices[0]:06d}.png"))
+        img0 = cv2.imread(os.path.join(path_handle, f"frame_{frame_indices[0]:06d}.png"), cv2.IMREAD_GRAYSCALE)
+        img1 = cv2.imread(os.path.join(path_handle, f"frame_{frame_indices[1]:06d}.png"), cv2.IMREAD_GRAYSCALE)
     else:
         raise ValueError("Invalid dataset index")
         
@@ -57,8 +58,8 @@ def initialize(ds, path_handle, frame_indices):
 if __name__ == "__main__":
 
     # 0 Initial config
-    ds = 1  # 0: KITTI, 1: Malaga, 2: Parking, 3: Own Dataset
-    bootstrap_frames = [0, 4]   # which two images to use for finding initial landmarks
+    ds = 3  # 0: KITTI, 1: Malaga, 2: Parking, 3: Own Dataset
+    bootstrap_frames = [300, 304]   # which two images to use for finding initial landmarks
     
     # 1 Load Dataset
     K, ground_truth, last_frame, path_handle = load_dataset(ds)
