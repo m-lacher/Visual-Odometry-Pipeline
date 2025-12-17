@@ -57,7 +57,7 @@ def initialize(ds, path_handle, frame_indices):
 if __name__ == "__main__":
 
     # 0 Initial config
-    ds = 2  # 0: KITTI, 1: Malaga, 2: Parking, 3: Own Dataset
+    ds = 0  # 0: KITTI, 1: Malaga, 2: Parking, 3: Own Dataset
     bootstrap_frames = [0, 4]   # which two images to use for finding initial landmarks
     
     # 1 Load Dataset

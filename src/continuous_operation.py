@@ -5,7 +5,7 @@ from src.initialization import process_frame, match_points
 from src.visualizations import WorldViewer2D
 from src.helpers.map_points import MapPoint, calculate_essential_matrix_and_triangulate_map_points
 from src.helpers.match_descriptors import matchDescriptorsLOWE
-from src.helpers.bundle_adjustment_2 import run_local_bundle_adjustment, build_ba_problem
+from src.helpers.bundle_adjustment_2 import run_local_bundle_adjustment, build_ba_problem, apply_ba_results
 
 
 def get_image_path(ds, path_handle, frame_index):
@@ -180,10 +180,11 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
                         ba_data = build_ba_problem(map_points, keyframe_history)
 
                         if ba_data is not None:
-                            rvecs, tvecs, points_3d, obs, cam_idx, pt_idx = ba_data
+                            rvecs, tvecs, points_3d, obs, cam_idx, pt_idx, ba_points_ids = ba_data
 
                             try:
-                                rvecs_opt, tvecs_opt, points_opt, _ = run_local_bundle_adjustment(
+                                print("Running Local BA...")
+                                rvecs_opt, tvecs_opt, points_opt, = run_local_bundle_adjustment(
                                     rvecs,
                                     tvecs,
                                     points_3d,
@@ -193,15 +194,14 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
                                     K
                                 )
 
-                                # Update keyframes
-                                for kf, r_opt, t_opt in zip(keyframe_history, rvecs_opt, tvecs_opt):
-                                    kf['rvec'][:] = r_opt
-                                    kf['tvec'][:] = t_opt
-
-                                # Update map points
-                                for mp, p_opt in zip(map_points, points_opt):
-                                    mp.position[:] = p_opt
-
+                                apply_ba_results(
+                                    map_points,
+                                    keyframe_history,
+                                    rvecs_opt,
+                                    tvecs_opt,
+                                    points_opt,
+                                    ba_point_ids=ba_points_ids
+                                )
                                 print("Local BA applied")
 
                             except Exception as e:
