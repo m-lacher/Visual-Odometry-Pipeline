@@ -37,7 +37,7 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
         map_points: Updated list of map points
     """
 
-    keyframe_dist = 4  # defines every nth Frame is a keyframe
+    keyframe_dist = 3  # defines every nth Frame is a keyframe (4 for sift, 3 for orb)
     keyframe_history = []
     MAX_HISTORY = 6  # bundle window
     last_keyframe_idx = start_index
@@ -45,7 +45,7 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
     viewer = WorldViewer2D()  # for visualization
     map_points_3d = np.array([mp.position for mp in map_points]).T
     viewer.add_points(map_points_3d.T)
-    MAX_MAP_POINTS = 80
+    MAX_MAP_POINTS = 100 #80 for sift but a 800 for orb
     
     # Initialize tracking variables
     lkf_kp = None
@@ -69,7 +69,7 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
         map_descriptors = np.array([mp.descriptor for mp in map_points]).T
 
         # describe new image features
-        key_points, described_points = process_frame(img=image)
+        key_points, described_points, descriptor_type = process_frame(img=image)
 
         # display the mapped points
         viewer.add_points(map_points_3d.T)
@@ -77,7 +77,7 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
         
         # find new matches from existing landmarks
 
-        matches = matchDescriptorsLOWE(described_points, map_descriptors, match_lambda=0.7)
+        matches = matchDescriptorsLOWE(described_points, map_descriptors, descriptor_type, match_lambda=0.7)
         query_indices = np.nonzero(matches >= 0)[0]
         match_indices = matches[query_indices].astype(int)
         points_matched_3d = map_points_3d[:, match_indices]
@@ -86,12 +86,25 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
         points_matched_3d = points_matched_3d.T  # shape (N,3) for PnP
         
         # do PnP with Ransac
-        success, rvec, tvec, inliers = cv2.solvePnPRansac(
+        if descriptor_type == 'orb':
+            success, rvec, tvec, inliers = cv2.solvePnPRansac(
             np.array(points_matched_3d),
             np.array(points_matched_2d),
             K,
-            None
-        )
+            None,
+            iterationsCount=100, #relax Ransac for orb
+            reprojectionError=12.0, 
+            flags=cv2.SOLVEPNP_ITERATIVE
+            )
+            
+        elif descriptor_type == 'sift':
+            success, rvec, tvec, inliers = cv2.solvePnPRansac(
+            np.array(points_matched_3d),
+            np.array(points_matched_2d),
+            K,
+            None,
+            )
+        
 
         # If pnp was successful: Plot new camera pose
         if success:
@@ -119,7 +132,7 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
         if is_keyframe and (i - start_index) != 0 and success:
             viewer.clear_points()
             p_lkf, p_ckf, p_lkf_descriptors, p_ckf_descriptors = match_points(
-                lkf_kp, lkf_dp, key_points, described_points, match_lambda=0.7
+                lkf_kp, lkf_dp, key_points, described_points, descriptor_type, match_lambda=0.7
             )
             
             if len(p_lkf) < 8:
@@ -127,9 +140,8 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
             else:
                 F, mask = cv2.findEssentialMat(
                     p_lkf, p_ckf, cameraMatrix=K, method=cv2.RANSAC, 
-                    prob=0.999, threshold=1.0
+                    prob=0.999, threshold=5.0
                 )
-                
                 if mask is None:
                     print("triangulation failed")
                 else:
@@ -144,8 +156,8 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
                     new_map_points_normalized = (new_map_points[:3] / new_map_points[3]).T
                     new_map_points_normalized_CF = R @ new_map_points_normalized.T + t
                     
-                    valid_point_mask_min = new_map_points_normalized_CF[2, :] > 0
-                    valid_point_mask_max = new_map_points_normalized_CF[2, :] < 30
+                    valid_point_mask_min = new_map_points_normalized_CF[2, :] > 3 #play around (5 for less scale drift)
+                    valid_point_mask_max = new_map_points_normalized_CF[2, :] < 50
                     valid_point_mask = valid_point_mask_min & valid_point_mask_max
 
                     new_map_points_normalized = new_map_points_normalized[valid_point_mask]
@@ -154,6 +166,7 @@ def continuous_operation(ds, path_handle, last_frame, start_index, map_points, K
                         MapPoint(new_map_points_normalized[s], inlier_descriptors[:, s])
                         for s in range(len(new_map_points_normalized))
                     ]
+                    print(f"Triangulated {len(new_map_points_list)} new points. Total map: {len(map_points)}")
 
                     for idx, mp in enumerate(new_map_points_list):
                         mp.add_observation(last_keyframe_idx, tuple(p_lkf_inliers[idx]))

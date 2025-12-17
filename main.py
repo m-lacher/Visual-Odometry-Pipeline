@@ -41,14 +41,14 @@ def initialize(ds, path_handle, frame_indices):
     #match_lambda = 4
 
     # Step 3 - processing the two frames
-    key_points_0, described_points_0 = process_frame(img=img0)
-    key_points_1, described_points_1 = process_frame(img=img1)
+    key_points_0, described_points_0, descriptor_type = process_frame(img=img0)
+    key_points_1, described_points_1, descriptor_type = process_frame(img=img1)
 
     #visualize_keypoints(key_points_0, img0, "Frame 0: All Keypoints")
     #visualize_keypoints(key_points_1, img1, "Frame 1: All Keypoints")
 
     # Step 4 - maching the points from the frames
-    p0, p1, p0_descriptors, p1_descriptors = match_points(key_points_0, described_points_0, key_points_1, described_points_1, match_lambda=0.7)
+    p0, p1, p0_descriptors, p1_descriptors = match_points(key_points_0, described_points_0, key_points_1, described_points_1, descriptor_type, match_lambda=0.7)
     #visualize_matches(p0, p1, img0, img1, max_matches=30)
     map_points = calculate_essential_matrix_and_triangulate_map_points(p0, p1, p1_descriptors, K, frame_indices, None) # store descriptors from later frame (more robust)
     return map_points
@@ -57,7 +57,7 @@ def initialize(ds, path_handle, frame_indices):
 if __name__ == "__main__":
 
     # 0 Initial config
-    ds = 1  # 0: KITTI, 1: Malaga, 2: Parking, 3: Own Dataset
+    ds = 0  # 0: KITTI, 1: Malaga, 2: Parking, 3: Own Dataset
     bootstrap_frames = [0, 4]   # which two images to use for finding initial landmarks
     
     # 1 Load Dataset
