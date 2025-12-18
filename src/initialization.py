@@ -7,7 +7,7 @@ import cv2
 
 def process_frame(img, 
         num_keypoints=1000, # Note from Markus: I increased it to have more matches in initialization. 500 for sift, 1500 for orb
-        detector='fast',
+        detector='gftt',
         descriptor='sift' #when switching descriptor check MAX_MAP_POINTS and keyframe_dist in continuous_operation, num_keypoints above, and play with filter values in continuous_operation
     ):
     
