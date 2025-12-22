@@ -27,8 +27,9 @@ def initialize(ds, path_handle, frame_indices):
         img0 = cv2.imread(os.path.join(path_handle, 'images', f"img_{frame_indices[0]:05d}.png"), cv2.IMREAD_GRAYSCALE)
         img1 = cv2.imread(os.path.join(path_handle, 'images', f"img_{frame_indices[1]:05d}.png"), cv2.IMREAD_GRAYSCALE)
     elif ds == 3:
-        img0 = cv2.imread(os.path.join(path_handle, f"{frame_indices[0]:06d}.png"), cv2.IMREAD_GRAYSCALE)
-        img1 = cv2.imread(os.path.join(path_handle, f"{frame_indices[1]:06d}.png"), cv2.IMREAD_GRAYSCALE)
+        print(os.path.join(path_handle, f"frame_{frame_indices[0]:06d}.png"))
+        img0 = cv2.imread(os.path.join(path_handle, f"frame_{frame_indices[0]:06d}.png"), cv2.IMREAD_GRAYSCALE)
+        img1 = cv2.imread(os.path.join(path_handle, f"frame_{frame_indices[1]:06d}.png"), cv2.IMREAD_GRAYSCALE)
     else:
         raise ValueError("Invalid dataset index")
         

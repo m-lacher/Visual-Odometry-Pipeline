@@ -49,6 +49,10 @@ def load_dataset(ds):
     elif ds == 3:
         # our Dataset
         path_handle = own_dataset_path
+        last_frame = 2558
+        K = np.loadtxt(os.path.join(parking_path, 'K.txt'), delimiter=',', usecols=(0, 1, 2))
+        ground_truth = None
+        path_handle = os.path.join(own_dataset_path, 'undistorted_grayscale')
         
     else:
         raise ValueError("Invalid dataset index")

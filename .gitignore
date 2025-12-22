@@ -1,4 +1,8 @@
-/Datasets/*
+/Datasets/kitti/*
+/Datasets/malaga/*
+/Datasets/parking/*
+/Datasets/own_dataset/calibration_frames/*
+/Datasets/own_dataset/frames/*
 .vscode/
 # Python bytecode files and folders
 __pycache__/
