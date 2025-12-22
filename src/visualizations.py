@@ -170,15 +170,17 @@ class WorldViewer2D:
         self,
         map_size=700,
         zoom=20.0,
-        map_radius=12.0,   # maximum map size
+        map_radius=12.0,
         img_size=(480, 640),
         max_points_to_draw=500,
-        draw_keypoints_enabled=True
+        draw_keypoints_enabled=True,
+        plot_height=150
     ):
         """
         map_size : pixel size of the map window
         zoom     : pixels per meter
         map_radius : half-width of map (limits the area shown)
+        plot_height : height of zoomed-out trajectory plot below image
         """
         self.map_size = map_size
         self.zoom = zoom
@@ -186,6 +188,7 @@ class WorldViewer2D:
         self.img_h, self.img_w = img_size
         self.max_points_to_draw = max_points_to_draw
         self.draw_keypoints_enabled = draw_keypoints_enabled
+        self.plot_h = plot_height
 
         self.points = []               # list of (N,3)
         self.camera_positions = []     # list of (3,)
@@ -218,7 +221,7 @@ class WorldViewer2D:
 
     def draw(self, window_name="VO Top-down Viewer"):
         canvas = np.zeros(
-            (max(self.map_size, self.img_h), self.map_size + self.img_w, 3),
+            (max(self.map_size, self.img_h + self.plot_h + 10), self.map_size + self.img_w, 3),
             dtype=np.uint8
         )
 
@@ -322,6 +325,44 @@ class WorldViewer2D:
                     )
 
             canvas[:self.img_h, self.map_size:self.map_size + self.img_w] = img_panel
+
+
+        # making the global trajectory graph
+        plot_canvas = np.ones((self.plot_h, self.img_w, 3), dtype=np.uint8) * 25
+        
+        if len(self.camera_positions) > 1:
+            cams = np.array(self.camera_positions)
+            xs, zs = cams[:, 0], cams[:, 2]
+            
+            x_min, x_max = xs.min(), xs.max()
+            z_min, z_max = zs.min(), zs.max()
+            
+            x_range = max(x_max - x_min, 0.1)
+            z_range = max(z_max - z_min, 0.1)
+            
+            plot_margin = (self.img_w - 20) / x_range
+            plot_margin_z = (self.plot_h - 20) / z_range
+            dynamic_zoom = min(plot_margin, plot_margin_z)
+            
+            cx_plot = (x_min + x_max) / 2
+            cz_plot = (z_min + z_max) / 2
+            
+            def world_to_plot(x, z):
+                u = int(self.img_w / 2 + (x - cx_plot) * dynamic_zoom)
+                v = int(self.plot_h / 2 - (z - cz_plot) * dynamic_zoom)
+                return u, v
+            
+            for i in range(1, len(cams)):
+                u0, v0 = world_to_plot(cams[i-1, 0], cams[i-1, 2])
+                u1, v1 = world_to_plot(cams[i, 0], cams[i, 2])
+                if 0 <= u0 < self.img_w and 0 <= v0 < self.plot_h and 0 <= u1 < self.img_w and 0 <= v1 < self.plot_h:
+                    cv2.line(plot_canvas, (u0, v0), (u1, v1), (0, 255, 255), 1)
+            
+            u_curr, v_curr = world_to_plot(cams[-1, 0], cams[-1, 2])
+            cv2.circle(plot_canvas, (u_curr, v_curr), 3, (0, 0, 255), -1)
+        
+        cv2.putText(plot_canvas, "Full Trajectory (X-Z)", (10, 12), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+        canvas[self.img_h + 10:self.img_h + 10 + self.plot_h, self.map_size:self.map_size + self.img_w] = plot_canvas
 
         cv2.imshow(window_name, canvas)
         cv2.waitKey(1)
