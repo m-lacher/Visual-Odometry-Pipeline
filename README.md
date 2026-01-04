@@ -8,12 +8,13 @@ We are using conda to manage the dependencies as suggested in the pdf.
 3) conda activate vo_env
 
 # Youtube Links
-## Kitti
-[kitti link](https://www.youtube.com/watch?v=RO2LaTvn-aU)
-## MALAGA
-[malaga link](https://www.youtube.com/watch?v=eqegAThBELw)
-## Parking
-[parking link](https://www.youtube.com/watch?v=GJ_gRpAT5MY)
-## Our own Dataset
-TBD
+[kitti dataset](https://www.youtube.com/watch?v=RO2LaTvn-aU) \
+[malaga dataset](https://www.youtube.com/watch?v=eqegAThBELw) \
+[parking dataset](https://www.youtube.com/watch?v=GJ_gRpAT5MY) \
+[our own dataset](https://youtu.be/kjrYvDRPZwk)
+
+# Authors
+**Piotr Maciej Wojtaszewski** \
+**Gian-Andrin Coolen** \
+**Markus Lacher** 
 
