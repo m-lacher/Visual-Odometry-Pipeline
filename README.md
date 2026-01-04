@@ -7,9 +7,13 @@ We are using conda to manage the dependencies as suggested in the pdf.
 2) conda env create -f environment.yml
 3) conda activate vo_env
 
-# TODOs
-- Cleanup main file
-- Improve precision and speed of pipeline. Potential work to be done:
-    1) Improve data handling (replace lists with numpy array (e.g. Map_Points), lots of transforms and list manipulations
-    2) Tune Parameters
-    3) Improve plotting efficiency
+# Youtube Links
+## Kitti
+[kitti link](https://www.youtube.com/watch?v=RO2LaTvn-aU)
+## MALAGA
+[malaga link](https://www.youtube.com/watch?v=eqegAThBELw)
+## Parking
+[parking link](https://www.youtube.com/watch?v=GJ_gRpAT5MY)
+## Our own Dataset
+TBD
+
